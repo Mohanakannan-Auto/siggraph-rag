@@ -65,7 +65,7 @@ class GenerationConfig:
     """Configuration for the RAG generator."""
     llm_model: str = "openai/gpt-4o"  # Model to use for answer generation
     temperature: float = 0.1  # Low temperature for factual answers
-    max_tokens: int = 1350  # Max length of generated answer (reduced for credit limit)
+    max_tokens: int = 3683  # Max length of generated answer (reduced for credit limit)
     openrouter_api_key: Optional[str] = None  # Will load from env if not set
     refine_query: bool = False  # Whether to refine queries before retrieval
     refinement_model: str = "openai/gpt-3.5-turbo"  # Cheaper model for refinement
@@ -226,20 +226,20 @@ class RAGGenerator:
         Returns:
             List of unique source metadata dicts
         """
-        seen = set()
+        seen = {}
         sources = []
         for res in results:
             if res.title not in seen:
-                seen.add(res.title)
-                sources.append({
-                   "title": res.title,
-                   "authors": res.authors,
-                   "pdf_url": res.pdf_url,
-                   "github_link": res.github_link,
-                   "video_link": res.video_link,
-                   "acm_url": res.acm_url,
-                   "abstract_url": res.abstract_url,
-               })
+                seen[res.title] = {
+                    "title": res.title,
+                    "authors": res.authors,
+                    "pdf_url": res.pdf_url,
+                    "github_link": res.github_link,
+                    "video_link": res.video_link,
+                    "acm_url": res.acm_url,
+                    "abstract_url": res.abstract_url,
+                }
+                sources.append(seen[res.title])
         
         assert isinstance(sources, list), f"sources must be a list, got {type(sources)}"
         return sources
@@ -313,6 +313,7 @@ class RAGGenerator:
         resp = requests.post(f"{self.openrouter_base_url}/chat/completions", headers=pyld_head, json=pyld_data)
         
         if resp.status_code != 200:
+            print(f"DEBUG: {resp.text}")
             raise Exception("Failed to generate embedding")
         else:
             resp_json = resp.json()
@@ -371,11 +372,12 @@ class RAGGenerator:
                 "sources": []
             }
         cntxt = self._format_context(results)
+        print(f"Context: {len(cntxt)} -> Query: {len(query)}")
         ans = self._call_llm(query, cntxt)
-        
+        print(f"Answer: {ans}")
         return {
             "query": query,
-            "refined_query": refined if refined != query else None,
+            "refined_query": refined if refined != query else query,
             "answer": ans,
             "sources": self._build_sources_metadata(results) if return_sources else []
         }
